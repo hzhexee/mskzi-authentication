@@ -110,13 +110,20 @@ if result == "AUTH_SUCCESS":
         # Отправляем имя файла
         file_name = os.path.basename(file_path)
         client_socket.send(f"FILENAME:{file_name}".encode())
+        print(f"[КЛИЕНТ] Отправлено имя файла: {file_name}")
+        time.sleep(1)  # Добавляем паузу
         
         # Отправляем размер файла
         file_size = os.path.getsize(file_path)
         client_socket.send(f"FILESIZE:{file_size}".encode())
+        print(f"[КЛИЕНТ] Отправлен размер файла: {file_size} байт")
+        time.sleep(1)  # Добавляем паузу
         
         # Получаем подтверждение готовности
-        ready = client_socket.recv(1024).decode()
+        print(f"[КЛИЕНТ] Ожидание сигнала готовности от сервера...")
+        ready = client_socket.recv(1024).decode().strip()
+        print(f"[КЛИЕНТ] Получен ответ от сервера: '{ready}'")
+        
         if ready != "READY":
             print(f"[КЛИЕНТ] Ошибка: сервер не готов к приему файла")
             client_socket.close()
