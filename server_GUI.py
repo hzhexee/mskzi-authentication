@@ -1,20 +1,26 @@
-import tkinter as tk
-from tkinter import scrolledtext, filedialog, messagebox
-import threading
-import socket
-import os
 import sys
+import os
+import socket
+import threading
 import datetime
 import hashlib
 import secrets
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                            QHBoxLayout, QLabel, QLineEdit, QPushButton, 
+                            QTextEdit, QFileDialog, QMessageBox, QFrame)
+from PyQt6.QtCore import Qt, QDir, pyqtSignal
+from PyQt6.QtGui import QFont, QColor, QPalette
 from server import users, skey_db, skey_lock, handle_client
 
-class ServerGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Сервер аутентификации")
-        self.root.geometry("800x600")
-        self.root.minsize(700, 500)
+class ServerGUI(QMainWindow):
+    # Сигнал для логирования из других потоков
+    log_signal = pyqtSignal(str)
+    
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Сервер аутентификации")
+        self.resize(800, 600)
+        self.setMinimumSize(700, 500)
         
         # Переменные состояния
         self.server_running = False
@@ -26,117 +32,231 @@ class ServerGUI:
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
         
-        # Создание фреймов
-        self.create_control_frame()
-        self.create_log_frame()
+        # Настройка темной темы
+        self.apply_dark_theme()
         
-        # Конфигурация root grid
-        self.root.grid_rowconfigure(1, weight=1)
-        self.root.grid_columnconfigure(0, weight=1)
+        # Создание основного виджета и компоновки
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        
+        # Создание элементов GUI
+        self.create_control_frame(main_layout)
+        self.create_log_frame(main_layout)
+        
+        # Подключаем сигнал логирования
+        self.log_signal.connect(self.append_log)
         
         # Вывод начального сообщения
         self.log("Сервер аутентификации инициализирован")
         self.log(f"Текущая директория сохранения: {os.path.abspath(self.save_dir)}")
     
-    def create_control_frame(self):
-        """Создает фрейм с элементами управления сервером"""
-        control_frame = tk.Frame(self.root, padx=10, pady=10)
-        control_frame.grid(row=0, column=0, sticky="ew")
+    def apply_dark_theme(self):
+        """Применяет темную тему к приложению"""
+        dark_palette = QPalette()
+        dark_palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+        dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
+        dark_palette.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
+        dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+        dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(25, 25, 25))
+        dark_palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.white)
+        dark_palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.white)
+        dark_palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+        dark_palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.white)
+        dark_palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
+        dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+        dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+        dark_palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.black)
+        
+        self.setPalette(dark_palette)
+        
+        # Установка стилей для элементов интерфейса
+        style = """
+        QMainWindow {
+            background-color: #2D2D30;
+        }
+        QLabel {
+            color: #FFFFFF;
+        }
+        QPushButton {
+            background-color: #3A3A3A;
+            color: #FFFFFF;
+            border: 1px solid #555555;
+            border-radius: 4px;
+            padding: 5px;
+        }
+        QPushButton:hover {
+            background-color: #505050;
+        }
+        QPushButton:pressed {
+            background-color: #252525;
+        }
+        QTextEdit {
+            background-color: #252526;
+            color: #DCDCDC;
+            border: 1px solid #3F3F46;
+        }
+        QLineEdit {
+            background-color: #2D2D30;
+            color: #FFFFFF;
+            border: 1px solid #3F3F46;
+            border-radius: 3px;
+        }
+        QFrame {
+            background-color: #333337;
+            border: 1px solid #3F3F46;
+            border-radius: 4px;
+        }
+        """
+        self.setStyleSheet(style)
+    
+    def create_control_frame(self, main_layout):
+        """Создает виджет с элементами управления сервером"""
+        control_frame = QFrame()
+        control_layout = QVBoxLayout(control_frame)
+        control_layout.setSpacing(10)
+        control_layout.setContentsMargins(10, 10, 10, 10)
         
         # Информация о директории сохранения
-        dir_frame = tk.Frame(control_frame)
-        dir_frame.pack(fill="x", pady=5)
+        dir_widget = QWidget()
+        dir_layout = QHBoxLayout(dir_widget)
+        dir_layout.setContentsMargins(0, 0, 0, 0)
         
-        tk.Label(dir_frame, text="Директория сохранения:").pack(side="left")
+        dir_label = QLabel("Директория сохранения:")
+        dir_layout.addWidget(dir_label)
         
-        self.dir_var = tk.StringVar(value=os.path.abspath(self.save_dir))
-        dir_entry = tk.Entry(dir_frame, textvariable=self.dir_var, width=50, state='readonly')
-        dir_entry.pack(side="left", padx=5, fill="x", expand=True)
+        self.dir_entry = QLineEdit(os.path.abspath(self.save_dir))
+        self.dir_entry.setReadOnly(True)
+        dir_layout.addWidget(self.dir_entry)
         
-        dir_button = tk.Button(dir_frame, text="Изменить", command=self.select_directory)
-        dir_button.pack(side="right")
+        dir_button = QPushButton("Изменить")
+        dir_button.clicked.connect(self.select_directory)
+        dir_button.setFixedWidth(120)
+        dir_layout.addWidget(dir_button)
+        
+        control_layout.addWidget(dir_widget)
         
         # Кнопки управления сервером
-        button_frame = tk.Frame(control_frame)
-        button_frame.pack(fill="x", pady=10)
+        button_widget = QWidget()
+        button_layout = QHBoxLayout(button_widget)
+        button_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.start_button = tk.Button(button_frame, text="Запустить сервер", 
-                                     command=self.start_server, bg="green", fg="white",
-                                     width=15, height=2)
-        self.start_button.pack(side="left", padx=5)
+        self.start_button = QPushButton("Запустить сервер")
+        self.start_button.clicked.connect(self.start_server)
+        self.start_button.setStyleSheet("QPushButton { background-color: #2E7D32; }")
+        self.start_button.setMinimumSize(150, 50)
+        button_layout.addWidget(self.start_button)
         
-        self.stop_button = tk.Button(button_frame, text="Остановить сервер", 
-                                    command=self.stop_server, bg="red", fg="white",
-                                    width=15, height=2, state="disabled")
-        self.stop_button.pack(side="left", padx=5)
+        self.stop_button = QPushButton("Остановить сервер")
+        self.stop_button.clicked.connect(self.stop_server)
+        self.stop_button.setStyleSheet("QPushButton { background-color: #C62828; }")
+        self.stop_button.setEnabled(False)
+        self.stop_button.setMinimumSize(150, 50)
+        button_layout.addWidget(self.stop_button)
+        
+        button_layout.addStretch()
+        control_layout.addWidget(button_widget)
         
         # Статус сервера
-        status_frame = tk.Frame(control_frame)
-        status_frame.pack(fill="x", pady=5)
+        status_widget = QWidget()
+        status_layout = QHBoxLayout(status_widget)
+        status_layout.setContentsMargins(0, 0, 0, 0)
         
-        tk.Label(status_frame, text="Статус сервера:").pack(side="left")
+        status_layout.addWidget(QLabel("Статус сервера:"))
         
-        self.status_var = tk.StringVar(value="Остановлен")
-        self.status_label = tk.Label(status_frame, textvariable=self.status_var, 
-                                    fg="red", font=("Arial", 10, "bold"))
-        self.status_label.pack(side="left", padx=5)
+        self.status_label = QLabel("Остановлен")
+        self.status_label.setStyleSheet("QLabel { color: #F44336; font-weight: bold; }")
+        status_layout.addWidget(self.status_label)
+        
+        status_layout.addStretch()
+        control_layout.addWidget(status_widget)
         
         # Информация о порте
-        port_frame = tk.Frame(control_frame)
-        port_frame.pack(fill="x", pady=5)
+        port_widget = QWidget()
+        port_layout = QHBoxLayout(port_widget)
+        port_layout.setContentsMargins(0, 0, 0, 0)
         
-        tk.Label(port_frame, text="Порт:").pack(side="left")
+        port_layout.addWidget(QLabel("Порт:"))
         
-        self.port_var = tk.StringVar(value="8080")
-        port_entry = tk.Entry(port_frame, textvariable=self.port_var, width=10)
-        port_entry.pack(side="left", padx=5)
+        self.port_entry = QLineEdit("8080")
+        self.port_entry.setFixedWidth(100)
+        port_layout.addWidget(self.port_entry)
+        
+        port_layout.addStretch()
+        control_layout.addWidget(port_widget)
+        
+        main_layout.addWidget(control_frame)
     
-    def create_log_frame(self):
-        """Создает фрейм с логами сервера"""
-        log_frame = tk.Frame(self.root, padx=10, pady=10)
-        log_frame.grid(row=1, column=0, sticky="nsew")
+    def create_log_frame(self, main_layout):
+        """Создает виджет с логами сервера"""
+        log_frame = QFrame()
+        log_layout = QVBoxLayout(log_frame)
+        log_layout.setSpacing(5)
+        log_layout.setContentsMargins(10, 10, 10, 10)
         
         # Заголовок
-        tk.Label(log_frame, text="Логи сервера:").pack(anchor="w")
+        log_layout.addWidget(QLabel("Логи сервера:"))
         
-        # Окно логов с прокруткой
-        self.log_area = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, height=20, 
-                                                  bg="#f0f0f0", font=("Consolas", 10))
-        self.log_area.pack(fill="both", expand=True, pady=5)
-        self.log_area.config(state="disabled")
+        # Окно логов
+        self.log_area = QTextEdit()
+        self.log_area.setReadOnly(True)
+        log_font = QFont("Consolas", 10)
+        self.log_area.setFont(log_font)
+        log_layout.addWidget(self.log_area)
         
         # Кнопка очистки логов
-        clear_button = tk.Button(log_frame, text="Очистить логи", command=self.clear_logs)
-        clear_button.pack(anchor="e")
+        clear_button = QPushButton("Очистить логи")
+        clear_button.clicked.connect(self.clear_logs)
+        clear_button.setFixedWidth(150)
+        clear_layout = QHBoxLayout()
+        clear_layout.addStretch()
+        clear_layout.addWidget(clear_button)
+        log_layout.addLayout(clear_layout)
+        
+        main_layout.addWidget(log_frame)
     
     def log(self, message):
-        """Добавляет сообщение в лог-окно с отметкой времени"""
+        """Добавляет сообщение в лог с отметкой времени"""
+        # Используем сигнал для безопасного обновления GUI из других потоков
+        self.log_signal.emit(message)
+    
+    def append_log(self, message):
+        """Метод, который фактически добавляет сообщения в лог (вызывается через сигнал)"""
         timestamp = datetime.datetime.now().strftime("[%Y-%m-%d %H:%M:%S]")
-        log_message = f"{timestamp} {message}\n"
+        log_message = f"{timestamp} {message}"
+        self.log_area.append(log_message)
         
-        self.log_area.config(state="normal")
-        self.log_area.insert(tk.END, log_message)
-        self.log_area.see(tk.END)
-        self.log_area.config(state="disabled")
+        # Прокручиваем вниз для отображения новых сообщений
+        scrollbar = self.log_area.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
     
     def clear_logs(self):
         """Очищает содержимое лог-окна"""
-        self.log_area.config(state="normal")
-        self.log_area.delete(1.0, tk.END)
-        self.log_area.config(state="disabled")
+        self.log_area.clear()
         self.log("Логи очищены")
     
     def select_directory(self):
         """Открывает диалог выбора директории для сохранения файлов"""
         if self.server_running:
-            messagebox.showwarning("Предупреждение", 
-                                  "Невозможно изменить директорию сохранения при запущенном сервере")
+            QMessageBox.warning(
+                self, 
+                "Предупреждение", 
+                "Невозможно изменить директорию сохранения при запущенном сервере"
+            )
             return
             
-        new_dir = filedialog.askdirectory(initialdir=self.save_dir)
+        new_dir = QFileDialog.getExistingDirectory(
+            self, 
+            "Выберите директорию сохранения", 
+            self.save_dir
+        )
+        
         if new_dir:
             self.save_dir = new_dir
-            self.dir_var.set(os.path.abspath(self.save_dir))
+            self.dir_entry.setText(os.path.abspath(self.save_dir))
             self.log(f"Директория сохранения изменена на: {os.path.abspath(self.save_dir)}")
             
             # Создаем директорию если она не существует
@@ -149,7 +269,7 @@ class ServerGUI:
             return
             
         try:
-            port = int(self.port_var.get())
+            port = int(self.port_entry.text())
             if port < 1024 or port > 65535:
                 raise ValueError("Порт должен быть в диапазоне 1024-65535")
                 
@@ -158,10 +278,10 @@ class ServerGUI:
             self.server_socket.listen(5)
             
             self.server_running = True
-            self.start_button.config(state="disabled")
-            self.stop_button.config(state="normal")
-            self.status_var.set("Запущен")
-            self.status_label.config(fg="green")
+            self.start_button.setEnabled(False)
+            self.stop_button.setEnabled(True)
+            self.status_label.setText("Запущен")
+            self.status_label.setStyleSheet("QLabel { color: #4CAF50; font-weight: bold; }")
             
             self.log(f"Сервер запущен на порту {port}")
             self.log(f"Ожидание клиентов...")
@@ -172,7 +292,7 @@ class ServerGUI:
             self.server_thread.start()
             
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Не удалось запустить сервер: {str(e)}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось запустить сервер: {str(e)}")
             self.log(f"Ошибка запуска сервера: {str(e)}")
     
     def server_loop(self):
@@ -449,7 +569,7 @@ class ServerGUI:
         try:
             # Разрываем соединение с сервером для завершения accept()
             temp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            temp_socket.connect(('localhost', int(self.port_var.get())))
+            temp_socket.connect(('localhost', int(self.port_entry.text())))
             temp_socket.close()
         except:
             pass
@@ -458,24 +578,23 @@ class ServerGUI:
         if self.server_thread and self.server_thread.is_alive():
             self.server_thread.join(2.0)
             
-        self.start_button.config(state="normal")
-        self.stop_button.config(state="disabled")
-        self.status_var.set("Остановлен")
-        self.status_label.config(fg="red")
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        self.status_label.setText("Остановлен")
+        self.status_label.setStyleSheet("QLabel { color: #F44336; font-weight: bold; }")
         
         self.log("Сервер остановлен")
 
 def main():
-    root = tk.Tk()
-    app = ServerGUI(root)
-    root.protocol("WM_DELETE_WINDOW", lambda: quit_app(root, app))
-    root.mainloop()
-
-def quit_app(root, app):
-    """Корректное завершение приложения"""
-    if app.server_running:
-        app.stop_server()
-    root.destroy()
+    app = QApplication(sys.argv)
+    
+    # Установка темной темы для всего приложения
+    app.setStyle("Fusion")
+    
+    window = ServerGUI()
+    window.show()
+    
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
     main()
